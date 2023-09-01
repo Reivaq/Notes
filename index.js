@@ -1,7 +1,22 @@
+require('dotenv').config()
+require('./mongo')
+
+require('./mongo.js') // Primero debe realizar la conexion
+
 const express = require('express')
 const cors = require('corse')
 const app = express()
 const logger = require('./loggerMiddleware')
+const Note = require(' ./models/Note ')
+const notFound = require('./notFound')
+const handleErrors = require('./handleErrors')
+const Sentry = require('@sentry/node')
+const Tracing = require('@sentry/tracing')
+
+// const connectDB = require('./mongo.js')
+// connectDB()
+
+require('./mongo.js')
 
 app.use(express.json()) // Maydelwer
 // eslint-disable-next-line linebreak-style
@@ -32,24 +47,57 @@ app.get('/', (request, response) => {
   response.send('<h1> Hello Word </h1>')
 })
 
-app.get('/api/notes', (request, response) => {
-  response.json(notes)
+Sentry.init({
+  dsn: 'https://sentry.io/for/javascript/?original_referrer=https%3A%2F%2Fwww.google.com%2F',
+  integrations: [
+    new Sentry.integrations.Http({ tracing: true }),
+
+    new Tracing.Integrations.Express({ app })
+
+  ],
+  tracesSampleRate: 1.0
 })
 
 // Forma dinamica de recuperar algo del pas
-app.get('/api/notes/:id', (request, response) => {
-  const id = Number(request.params.id)
-  const note = notes.find(note => note.id === id)
-
-  if (note) {
-    response.json(note)
-  } else {
-    response.status(404).end()
-  }
+app.get('/api/notes/:id', (request, response, next) => {
+  const { id } = request.params
+  Note.findById(id).then(note => {
+    if (note) {
+      response.json(note)
+    } else {
+      response.status(404).end()
+    }
+  }).catch(err => {
+    next(err)
+  })
 })
 
-app.delete('/api/notes/:id', (request, response) => {
-  const id = Number(request.params.id)
+app.use((request, response, next) => {
+  response.status(404).end()
+})
+
+// Editar contenido y saber si es importante o no
+app.put('/api/notes/:id', (request, response, next) => {
+  const { id } = request.params
+  const note = request.body
+  const newNoteInfo = {
+    content: note.content, // Corregido "contend" a "content"
+    important: note.important
+  }
+  Note.findByIdAndUpdate(id, newNoteInfo, { new: true }) // Corregido "findByIdUpdate" a "findByIdAndUpdate" y agregado el objeto de opciones
+    .then((result) => {
+      response.json(result)
+    })
+    .catch((error) => {
+      next(error) // Manejo de errores
+    })
+})
+
+app.delete('/api/notes/:id', (request, response, next) => {
+  const { id } = request.params
+  Note.findByAndRemove(id).then(result => {
+
+  }).catch(error => next(error))
   notes = notes.filter(note => note.id !== id)
 
   response.status(204).end()
@@ -64,17 +112,18 @@ app.post('/api/notes', (request, response) => {
     })
   }
 
-  const ids = notes.map(note => note.id)
-  const maxId = Math.max(...ids)
+  // const ids = notes.map(note => note.id)
+  // const maxId = Math.max(...ids)
 
-  const newNote = {
-    ide: maxId + 1,
+  const newNote = new Note({
     content: note.content,
     important: typeof note.important !== 'undefined' ? note.important : false,
     date: new Date().toISOString()
-  }
+  })
 
-  notes = notes.concat(newNote) // notes = [ ... notes, newNote]
+  note.save().then(savedNote => {
+    response.json(savedNote)
+  })
 
   response.status(201).json(newNote)
 })
@@ -83,7 +132,11 @@ app.use((request, response) => {
     error: 'Not Found'
   })
 })
-const PORT = 3001 // Sre define el puerto en el cual va a escuchar
+
+app.use(notFound)
+
+app.use(handleErrors)
+const PORT = process.env || 3001 // Sre define el puerto en el cual va a escuchar
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`)
 }) // Escuha al puerto 3001
