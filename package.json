@@ -4,22 +4,37 @@
   "description": "This is my firs class of backend",
   "main": "index.js",
   "scripts": {
-    "dev": "nodemon index.js",
-    "linit": "eslint .",
-    "start": " node index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "cross-env NODE_ENV=development nodemon index.js",
+    "lint": "npm run lint .",
+    "start": "cross-env NODE_ENV=production node index.js",
+    "test": "cross-env NODE_ENV=test jest --verbose --silent test/notes.test.js --detectOpenHandles",
+    "test:watch": "npm run test -- -- watch"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@sentry/node": "^7.66.0",
+    "@sentry/react": "^7.65.0",
+    "@sentry/tracing": "^7.66.0",
     "cors": "2.8.5",
+    "cross-env": "^7.0.3",
+    "dotenv": "^16.3.1",
     "express": "4.18.2",
+    "mongoose": "^7.4.5",
     "nodemon": "^3.0.1"
   },
   "devDependencies": {
-    "standard": "^17.1.0"
+    "jest": "^29.6.4",
+    "standard": "^17.1.0",
+    "supertest": "^6.3.3"
   },
   "eslintConfig": {
-    "extends": "./node_modules/standard/eslintrc.json"
+    "extends": "./node_modules/standard/eslintrc.json",
+    "env": {
+      "jest": true
+    }
+  },
+  "jest": {
+    "testEnvironment": "node"
   }
 }

@@ -1,13 +1,127 @@
-const express = require('express')
-const cors = require('corse')
-const app = express()
-const logger = require('./loggerMiddleware')
+require('dotenv').config()
+require('./mongo')
 
-app.use(express.json()) // Maydelwer
-// eslint-disable-next-line linebreak-style
+require('./mongo.js') // Primero debe realizar la conexion
+
+const Sentry = require('@sentry/node')
+const Tracing = require('@sentry/tracing')
+const express = require('express')
+const app = express()
+const cors = require('cors')
+// const logger = require('./loggerMiddleware')
+const Note = require('./models/Note')
+const notFound = require('./notFound')
+const handleErrors = require('./handleErrors')
+
+// const connectDB = require('./mongo.js')
+// connectDB()
+
 app.use(cors())
-app.use(logger)
-let notes = [
+app.use(express.json()) // Maydelwer
+app.use('imagenes', express.static('images'))
+// require('./mongo.js')
+
+Sentry.init({
+  dsn: 'https://sentry.io/for/javascript/?original_referrer=https%3A%2F%2Fwww.google.com%2F',
+  integrations: [
+    new Sentry.integrations.Http({ tracing: true }),
+
+    new Tracing.Integrations.Express({ app })
+
+  ],
+  tracesSampleRate: 1.0
+})
+
+app.use(Sentry.Handlers.requestHandler())
+app.use(Sentry.Handlers.tracingHandler())
+
+app.get('/', (request, response) => {
+  console.log(request.ip)
+  console.log(request.ips)
+  console.log(request.originalUrl)
+  response.sed('<h1> Hello World! <h1>')
+})
+
+app.get('/api/notes', async (request, response) => {
+  const notes = await Note.find({})
+  response.json(notes)
+})
+
+// Forma dinamica de recuperar algo del pas
+
+app.get('/api/notes/:id', (request, response, next) => {
+  const { id } = request.params
+  Note.findById(id).then(note => {
+    if (note) {
+      response.json(note)
+    } else {
+      response.status(404).end()
+    }
+  }).catch(err => {
+    next(err)
+  })
+})
+
+// Editar contenido y saber si es importante o no
+app.put('/api/notes/:id', (request, response, next) => {
+  const { id } = request.params
+  const note = request.body
+
+  const newNoteInfo = {
+    content: note.content, // Corregido "contend" a "content"
+    important: note.important
+  }
+  Note.findByIdAndUpdate(id, newNoteInfo, { new: true }) // Corregido "findByIdUpdate" a "findByIdAndUpdate" y agregado el objeto de opciones
+    .then((result) => {
+      response.json(result)
+    })
+    .catch((error) => {
+      next(error) // Manejo de errores
+    })
+})
+
+app.delete('/api/notes/:id', (request, response, next) => {
+  const { id } = request.params
+  Note.findByAndDelete(id).then(() => response.status(204).end()).catch(next)
+})
+
+app.post('/api/notes', async (request, response) => {
+  const note = request.body
+
+  if (!note.content) {
+    return response.status(400).json({
+      error: 'note.content is missing'
+    })
+  }
+
+  // const ids = notes.map(note => note.id)
+  // const maxId = Math.max(...ids)
+
+  const newNote = new Note({
+    content: note.content,
+    date: new Date(),
+    important: note.important || false
+    // important: typeof note.important !== 'undefined' ? note.important : false,
+    // date: new Date().toISOString()
+  })
+
+  // newNote.save().then(savedNote => {
+  // response.json(savedNote)
+  /// }).catch(err => (err))
+  try {
+    const savedNote = await newNote.save()
+    response.json(savedNote)
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.use(notFound)
+app.use(Sentry.Handlers.errorHandler())
+app.use(handleErrors)
+
+// app.use(logger)
+const notes = [
   {
     id: 1,
     content: 'HTML is eisser',
@@ -32,61 +146,21 @@ app.get('/', (request, response) => {
   response.send('<h1> Hello Word </h1>')
 })
 
-app.get('/api/notes', (request, response) => {
-  response.json(notes)
-})
-
-// Forma dinamica de recuperar algo del pas
-app.get('/api/notes/:id', (request, response) => {
-  const id = Number(request.params.id)
-  const note = notes.find(note => note.id === id)
-
-  if (note) {
-    response.json(note)
-  } else {
-    response.status(404).end()
-  }
-})
-
-app.delete('/api/notes/:id', (request, response) => {
-  const id = Number(request.params.id)
-  notes = notes.filter(note => note.id !== id)
-
-  response.status(204).end()
-})
-
-app.post('/api/notes', (request, response) => {
-  const note = request.body
-
-  if (!note || !note.content) {
-    return response.status(400).json({
-      error: 'note.content is missing'
-    })
-  }
-
-  const ids = notes.map(note => note.id)
-  const maxId = Math.max(...ids)
-
-  const newNote = {
-    ide: maxId + 1,
-    content: note.content,
-    important: typeof note.important !== 'undefined' ? note.important : false,
-    date: new Date().toISOString()
-  }
-
-  notes = notes.concat(newNote) // notes = [ ... notes, newNote]
-
-  response.status(201).json(newNote)
+app.use((request, response, next) => {
+  response.status(404).end()
 })
 app.use((request, response) => {
   response.status(404).json({
     error: 'Not Found'
   })
 })
-const PORT = 3001 // Sre define el puerto en el cual va a escuchar
-app.listen(PORT, () => {
+
+const PORT = process.env || 3001 // Sre define el puerto en el cual va a escuchar
+const server = app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`)
 }) // Escuha al puerto 3001
+
+module.exports = (app, server)
 
 /* Con Http
 
